@@ -1,0 +1,28 @@
+[project]
+name = "cosc760-bigdataanalytics"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "altair>=5.5.0",
+    "category-encoders>=2.8.1",
+    "datasets>=4.4.1",
+    "kagglehub>=0.3.13",
+    "marimo>=0.16.5",
+    "openai>=2.6.1",
+    "pandas>=2.3.3",
+    "pyarrow>=21.0.0",
+    "ruff>=0.14.0",
+    "scikit-learn>=1.7.2",
+    "transformers>=4.57.1",
+    "wordcloud>=1.9.4",
+]
+
+[tool.uv.sources]
+lightfm = { git = "https://github.com/daviddavo/lightfm" }
+
+[tool.uv.workspace]
+members = [
+    "TermProject",
+]
