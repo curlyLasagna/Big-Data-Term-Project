@@ -39,7 +39,7 @@
 
   # https://devenv.sh/scripts/
   scripts.hello.exec = ''
-    uv -v
+    python --version
   '';
 
   # https://devenv.sh/basics/
