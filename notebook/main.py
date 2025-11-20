@@ -9,6 +9,7 @@ def _():
     import marimo as mo
     from datasets import load_dataset
     from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import FunctionTransformer
     from transformers import RobertaTokenizerFast, TrainingArguments, Trainer
     import matplotlib.pyplot as plt
     from sklearn.decomposition import NMF, LatentDirichletAllocation, MiniBatchNMF
@@ -17,7 +18,17 @@ def _():
     from wordcloud import WordCloud
     import torch
     from transformers import BertTokenizer, BertForSequenceClassification
+    import numpy as np
+    alt.data_transformers.enable("vegafusion")
     return WordCloud, alt, load_dataset, mo, pd
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Data loading
+    """)
+    return
 
 
 @app.cell
@@ -48,15 +59,15 @@ def _(mo):
     return
 
 
-app._unparsable_cell(
-    r"""
+@app.cell(hide_code=True)
+def _(alt, pd):
     def create_top_n_pie_chart(
-        \"\"\"Returns a pie chart with the distribution of subreddits
+        df: pd.DataFrame, subreddit_col="subreddit", count_col="value", top_n=10
+    ) -> alt.Chart:
+        """
+        Returns a pie chart with the distribution of subreddits
         Allows us to analyze whether the dataset that we have is biased towards a single subreddit
-        \"\"\"
-
-        df: pd.DataFrame, subreddit_col=\"subreddit\", count_col=\"value\", top_n=10
-    ):
+        """
         df = df.groupby(subreddit_col).size().reset_index(name=count_col)
 
         # 1. Sort and identify Top N
@@ -67,7 +78,7 @@ app._unparsable_cell(
 
         # 2. Calculate the percentage
         total_sum = df_sorted[count_col].sum()
-        df_top_n[\"percentage\"] = (df_top_n[count_col] / total_sum) * 100
+        df_top_n["percentage"] = (df_top_n[count_col] / total_sum) * 100
 
         # 3. Calculate the 'Others' group value and percentage
         others_value = total_sum - df_top_n[count_col].sum()
@@ -75,9 +86,9 @@ app._unparsable_cell(
             df_others = pd.DataFrame(
                 [
                     {
-                        subreddit_col: \"Others\",
+                        subreddit_col: "Others",
                         count_col: others_value,
-                        \"percentage\": (others_value / total_sum) * 100,
+                        "percentage": (others_value / total_sum) * 100,
                     }
                 ]
             )
@@ -89,47 +100,30 @@ app._unparsable_cell(
         base = (
             alt.Chart(df_final)
             .encode(
-                theta=alt.Theta(\"percentage\", stack=True),
-                color=alt.Color(field=subreddit_col, title=\"Subreddit\"),
-                tooltip=[subreddit_col, count_col, \"percentage\"],
+                theta=alt.Theta("percentage", stack=True),
+                color=alt.Color(field=subreddit_col, title="Subreddit"),
+                tooltip=[subreddit_col, count_col, "percentage"],
             )
             .properties(
-                title=f\"Top {top_n} Subreddits by Comment Count (Percentage)\"
+                title=f"Top {top_n} Subreddits by Comment Count (Percentage)"
             )
         )
 
         pie = base.mark_arc(outerRadius=120).encode(
-            order=alt.Order(\"percentage\", sort=\"descending\")
+            order=alt.Order("percentage", sort="descending")
         )
 
         text = base.mark_text(radius=140).encode(
-            text=alt.Text(\"percentage:Q\", format=\".1f\"),
-            order=alt.Order(\"percentage\", sort=\"descending\"),
-            color=alt.value(\"black\"),
+            text=alt.Text("percentage:Q", format=".1f"),
+            order=alt.Order("percentage", sort="descending"),
+            color=alt.value("black"),
         )
 
         return (pie + text).interactive()
-    """,
-    name="_"
-)
+    return (create_top_n_pie_chart,)
 
 
-@app.cell
-def _(df):
-    df["score"].describe()
-    return
-
-
-@app.cell
-def _(pd):
-    def count_words_with_body(df: pd.DataFrame) -> pd.DataFrame:
-        """Count words in the 'body' column and return a DataFrame with the body and corresponding word counts."""
-        word_counts = df['body'].apply(lambda x: len(x.split()))
-        return pd.DataFrame({"body": df['body'], "word_count": word_counts})
-    return (count_words_with_body,)
-
-
-@app.cell
+@app.cell(hide_code=True)
 def _(alt, pd):
     def create_word_count_histogram(df: pd.DataFrame, column: str, title: str):
         """Visualizes a histogram of word counts for the specified column in the DataFrame."""
@@ -152,13 +146,16 @@ def _(alt, pd):
     return (create_word_count_histogram,)
 
 
-@app.cell
-def _(create_word_count_histogram, df):
-    create_word_count_histogram(df=df, column="body", title="huh")
-    return
+@app.cell(hide_code=True)
+def _(pd):
+    def count_words_with_body(df: pd.DataFrame) -> pd.DataFrame:
+        """Count words in the 'body' column and return a DataFrame with the body and corresponding word counts."""
+        word_counts = df['body'].apply(lambda x: len(x.split()))
+        return pd.DataFrame({"body": df['body'], "word_count": word_counts})
+    return (count_words_with_body,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(alt, pd):
     def create_score_histogram(score_series: pd.Series, title: str, low_score: float = None, high_score: float = None):
         # === PANDAS FILTERING STEP ===
@@ -198,7 +195,7 @@ def _(alt, pd):
     return (create_score_histogram,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(pd):
     def get_top_frequent_words(df: pd.DataFrame, top_n: int = 20):
         from collections import Counter
@@ -220,56 +217,7 @@ def _(pd):
     return
 
 
-@app.cell
-def _(count_words_with_body, df):
-    count_words_with_body(df).describe()
-    return
-
-
-@app.cell
-def _(alt, create_score_histogram, df):
-    alt.data_transformers.enable("vegafusion")
-    create_score_histogram(df["score"], "scores", low_score=-30, high_score=100)
-    return
-
-
-@app.cell
-def _(alt, pd):
-    def create_subreddit_histogram(df: pd.DataFrame):
-        """Analyzes the same thing as the pie chart"""
-        df = df.groupby('subreddit').size().reset_index(name='value').nlargest(10, "value")
-        histogram = alt.Chart(df).mark_bar().encode(
-            x=alt.X('subreddit', title='Subreddit', sort='-y'),
-            y=alt.Y('value:Q', title='Number of Comments'),
-            color=alt.Color('subreddit', title='Subreddit')
-        ).properties(
-            title='Comments Count per Subreddit'
-        )
-
-        return histogram
-    return
-
-
-@app.cell
-def _(df):
-    # Length of comments
-    df["body"].map(lambda comment: len(comment)).describe()
-    return
-
-
-@app.cell
-def _(df):
-    df.groupby("subreddit").size().to_frame("value").describe()
-    return
-
-
-@app.cell
-def _(create_top_n_pie_chart, df):
-    create_top_n_pie_chart(df=df, top_n=10)
-    return
-
-
-@app.cell
+@app.cell(hide_code=True)
 def _(WordCloud, pd):
     def generate_stop_words(data: pd.Series, title: str):
         import nltk
@@ -299,6 +247,130 @@ def _(WordCloud, pd):
 
 
 @app.cell
+def _(alt, pd):
+    def create_subreddit_histogram(df: pd.DataFrame):
+        """Histogram of the subreddits"""
+        df = df.groupby('subreddit').size().reset_index(name='value').nlargest(10, "value")
+        histogram = alt.Chart(df).mark_bar().encode(
+            x=alt.X('subreddit', title='Subreddit', sort='-y'),
+            y=alt.Y('value:Q', title='Number of Comments'),
+            color=alt.Color('subreddit', title='Subreddit')
+        ).properties(
+            title='Comments Count per Subreddit'
+        )
+
+        return histogram
+    return
+
+
+@app.cell
+def _(alt, pd):
+    def create_subreddit_avg_votes_histogram(data: pd.DataFrame):
+        chart = alt.Chart(data).mark_bar().encode(
+            x=alt.X('subreddit', axis=alt.Axis(labels=False)),
+            y=alt.Y('score:Q', title="Average score"),
+            color=alt.Color('subreddit', title='Subreddit', legend=None)
+        ).properties(
+            title="Subreddit average upvotes"
+        )
+
+        return chart
+    return (create_subreddit_avg_votes_histogram,)
+
+
+@app.cell(hide_code=True)
+def _(alt, count_words_with_body, pd):
+    def create_word_counts_chart(df: pd.DataFrame, title: str) -> alt.Chart:
+        """Visualizes a bar chart of word counts and their corresponding bodies."""
+        # Call the count_words_with_body function to get the word counts
+        word_counts_df = count_words_with_body(df)
+    
+        # Create an Altair bar chart
+        chart = alt.Chart(word_counts_df).mark_bar().encode(
+            x=alt.X('word_count', title='Word Count'),
+            y=alt.Y('count()', title='Frequency', scale=alt.Scale(domain=[0, 55])),
+            tooltip=['body', 'word_count']
+        ).properties(
+            title=title
+        ).interactive()
+    
+        return chart
+    return (create_word_counts_chart,)
+
+
+@app.cell
+def _(df):
+    df.groupby(["subreddit"])["score"].mean().reset_index()
+    return
+
+
+@app.cell
+def _(df):
+    breh = df.groupby(["subreddit"])["score"].mean().reset_index()
+    return (breh,)
+
+
+@app.cell
+def _(breh, create_subreddit_avg_votes_histogram):
+    create_subreddit_avg_votes_histogram(breh).save(fp="subreddit_avg.png", scale_factor=2)
+    return
+
+
+@app.cell
+def _(create_word_counts_chart, df):
+    create_word_counts_chart(df, "Comment length distribution").save(fp="comment_length_distribution.png", scale_factor=2)
+    return
+
+
+@app.cell
+def _(df):
+    df["score"].describe()
+    return
+
+
+@app.cell
+def _(create_word_count_histogram, df):
+    create_word_count_histogram(df=df, column="body", title="huh")
+    return
+
+
+@app.cell
+def _(count_words_with_body, df):
+    count_words_with_body(df).describe()
+    return
+
+
+@app.cell
+def _(create_score_histogram, df):
+    create_score_histogram(df["score"], "scores", low_score=-30, high_score=100)
+    return
+
+
+@app.cell
+def _(df):
+    # Length of comments
+    df["body"].map(lambda comment: len(comment)).describe()
+    return
+
+
+@app.cell
+def _(df):
+    df.groupby("subreddit").size().to_frame("value").describe()
+    return
+
+
+@app.cell
+def _(create_top_n_pie_chart, df):
+    create_top_n_pie_chart(df=df, top_n=10).save(fp="subreddit_pie.png", scale_factor=2)
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
 def _(df, generate_stop_words):
     # Generate word clouds for comments with negative votes and positive votes
     negative_scores_df = df[df["score"] > 5]
@@ -315,19 +387,10 @@ def _(generate_stop_words, positive_scores_df):
 
 @app.cell
 def _(df):
-    df[df["score"] > 5]
-    return
-
-
-@app.cell
-def _(df):
-    df[df["score"] < -3]
-    return
-
-
-@app.cell
-def _(df):
-    df["score"].describe()
+    from denseweight import DenseWeight
+    dw = DenseWeight(alpha=1.0)
+    dw.fit(df["score"].to_numpy())
+    dw([2])
     return
 
 

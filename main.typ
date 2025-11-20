@@ -93,4 +93,42 @@ The model is also expected to predict the relationship score between upvotes and
 \
 The “created_utc” timestamp is expected to analyze periods of controversies during significant events. The “author” field is expected to analyze if some users consistently post controversial content across the platform.
 
-= Midterm Progress Report
+= Midterm Progress
+
+== Pivot
+This project has pivoted from predicting the upvote score of a post via LLM to predicting the intrinsic engagement and quality of a comment, relative to its originating subreddit by a fine-tuned RoBERTa model. This change was necessary due to the absence of a direct link between the comment data and the original posts, which removed the context required for accurate post-level prediction. The new goal is to classify a comment's relative popularity ($Y$) based purely on its linguistic features and community context ($X$). Specifically, we shift from a regression task (predicting the exact score) to multi-class classification, where the target variable are bins of upvotes (e.g., 'Controversial', 'Baseline', 'High Quality', 'Viral').
+
+== Loading the dataset
+
+Due to the massive size of the dataset, our team does not have enough storage capacity to keep the entire dataset locally. Fortunately, HuggingFace's `dataset` library allows us to stream portions of the data. We selected 100,000 random rows from the dataset and excluded columns that were not relevant to our analysis: `subreddit_id`, `id`, `created_utc`, and `controversiality`. Since the dataset is unsorted, these 100,000 samples are expected to be randomly distributed.
+
+== Exploratory Data Analysis
+Examining the distribution of score values, we find that most posts in the dataset have only a single upvote, with no additional votes. Since this value dominates the data, a model trained without adjustment would likely predict a score of 1 for most inputs. To address this bias, we use the Python package #link("https://github.com/SteiMi/denseweight")[denseweight], which assigns higher weights to more interesting data points. Incorporating these weights into the loss function allows us to use weighted MSE, helping the model focus on the more informative samples.
+
+Looking at the average of upvotes per subreddit, we have the following statistics
+#table(
+
+)
+
+
+
+#figure(
+    image("./score_frequency.png"),
+    caption: ["Frequency of votes, excluding the value 1"]
+)
+
+#image("positive_words.png")
+
+#image("negative_words.png")
+
+#image("subreddit_pie.png")
+
+== Preprocessing
+
+For our preprocessing steps, we will be removing any HTML text, hyperlinks and apply lowercase to the entire corpus. As Reddit supports markdown markups, we will remove markdown hyperlinks via `[]()` and with images `![]()`. We will continue to add upon our preprocessing steps as we continue on trying to improve the model or observing any noisy text.
+
+Stopwords will not be removed as the general structure of the comments since RoBERTa relies on it to learn and interpret context.
+
+A subreddit's size is a factor in the number of upvotes a post could get. So we initially devised on transforming the target variable to a relative score with $ "score" = frac("raw score", "subreddit avg") $ but not all of the averages are positive values. Division by zero is problematic and dividing by negative values will put that data in the opposite data bin.
+
+We will instead calculate the standard deviation alongside the average of each subreddit to find the z-score of a subreddit.
