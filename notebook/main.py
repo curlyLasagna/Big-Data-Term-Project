@@ -20,7 +20,7 @@ def _():
     from transformers import BertTokenizer, BertForSequenceClassification
     import numpy as np
     alt.data_transformers.enable("vegafusion")
-    return WordCloud, alt, load_dataset, mo, pd
+    return RobertaTokenizerFast, WordCloud, alt, load_dataset, mo, pd
 
 
 @app.cell
@@ -43,7 +43,7 @@ def _(load_dataset, pd):
             "created_utc",
             "controversiality",
         ]
-    ).filter(lambda x: x["score"] != 1)
+    )
 
 
     df = dataset.take(100000)
@@ -155,7 +155,7 @@ def _(pd):
     return (count_words_with_body,)
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(alt, pd):
     def create_score_histogram(score_series: pd.Series, title: str, low_score: float = None, high_score: float = None):
         # === PANDAS FILTERING STEP ===
@@ -177,14 +177,14 @@ def _(alt, pd):
         chart = alt.Chart(df).mark_bar().encode(
         # Bin the 'Value' column to create the histogram bins.
         # 'maxbins=30' specifies the maximum number of bars/bins.
-        x=alt.X('score', bin=alt.Bin(maxbins=200), title='Value Range'),
+        x=alt.X('score', bin=alt.Bin(maxbins=100), title='Value Range'),
 
         # Use 'count()' to get the frequency (bar height) for each bin.
         y=alt.Y('count()', title='Frequency'),
 
         # Add tooltips for interaction
         tooltip=[
-            alt.Tooltip('score', bin=True, title='Value Range'), 
+            alt.Tooltip('score', bin=alt.Bin(maxbins=100), title='Value Range'), 
             'count()'
         ]
         ).properties(
@@ -300,7 +300,7 @@ def _(alt, count_words_with_body, pd):
 
 @app.cell
 def _(df):
-    df.groupby(["subreddit"])["score"].mean().reset_index()
+    df.groupby(["subreddit"])["score"].mean().reset_index().describe()
     return
 
 
@@ -342,7 +342,13 @@ def _(count_words_with_body, df):
 
 @app.cell
 def _(create_score_histogram, df):
-    create_score_histogram(df["score"], "scores", low_score=-30, high_score=100)
+    create_score_histogram(df["score"], "scores", low_score=-10, high_score=50).save(fp="score_frequency.png", scale_factor=2)
+    return
+
+
+@app.cell
+def _(df):
+    df["score"]
     return
 
 
@@ -386,11 +392,30 @@ def _(generate_stop_words, positive_scores_df):
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    ## RoBERTa
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### Tokenizing the input
+    """)
+    return
+
+
+@app.cell
+def _(RobertaTokenizerFast):
+    RobertaTokenizerFast.pre
+    return
+
+
+@app.cell
 def _(df):
-    from denseweight import DenseWeight
-    dw = DenseWeight(alpha=1.0)
-    dw.fit(df["score"].to_numpy())
-    dw([2])
+    df
     return
 
 
