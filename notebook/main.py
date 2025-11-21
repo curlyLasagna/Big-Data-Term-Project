@@ -20,7 +20,7 @@ def _():
     from transformers import BertTokenizer, BertForSequenceClassification
     import numpy as np
     alt.data_transformers.enable("vegafusion")
-    return WordCloud, alt, load_dataset, mo, pd
+    return WordCloud, alt, load_dataset, mo, np, pd, plt
 
 
 @app.cell
@@ -284,7 +284,7 @@ def _(alt, count_words_with_body, pd):
         """Visualizes a bar chart of word counts and their corresponding bodies."""
         # Call the count_words_with_body function to get the word counts
         word_counts_df = count_words_with_body(df)
-    
+
         # Create an Altair bar chart
         chart = alt.Chart(word_counts_df).mark_bar().encode(
             x=alt.X('word_count', title='Word Count'),
@@ -293,7 +293,7 @@ def _(alt, count_words_with_body, pd):
         ).properties(
             title=title
         ).interactive()
-    
+
         return chart
     return (create_word_counts_chart,)
 
@@ -395,7 +395,58 @@ def _(df):
 
 
 @app.cell
-def _():
+def _(df, np, pd):
+    #define bins and labels
+    bins = [-np.inf, -1.0, 0.5, 1.5, np.inf]
+    labels = ["Controversial", "Baseline", "High Quality", "Viral"]
+
+    df_binned = df.copy()
+
+    #grouped by subreddit
+    groups = df_binned.groupby("subreddit")["score"]
+    mean = groups.transform("mean")
+    std = groups.transform("std").replace(0,np.nan)
+    raw_z = (df_binned["score"] - mean) / std
+
+    #if std == 0, treat z as 0
+    df_binned["z_score"] = raw_z.fillna(0.0)
+    #bin
+    df_binned["quality_label"] = pd.cut(df_binned["z_score"], bins=bins, labels=labels)
+    df_binned
+
+    return (df_binned,)
+
+
+@app.cell
+def _(df_binned):
+    ordinal_map = {
+        "Controversial": 0,
+        "Baseline": 1,
+        "High Quality": 2,
+        "Viral": 3,
+    }
+    df_binned["quality_num"] = df_binned["quality_label"].map(ordinal_map)
+
+    return
+
+
+@app.cell
+def _(df_binned):
+    df_binned["quality_label"].value_counts()
+    return
+
+
+@app.cell
+def _(df_binned, plt):
+    plt.figure(figsize=(10, 6))
+    df_binned["quality_label"].value_counts().sort_index().plot(kind='bar', color=['crimson', 'steelblue', 'mediumseagreen', 'gold'])
+    plt.title('Distribution of Scores Binned', fontsize=14, fontweight='bold')
+    plt.xlabel('Quality Label', fontsize=12)
+    plt.ylabel('Number of Posts', fontsize=12)
+    plt.xticks(rotation=45)
+    plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
     return
 
 
