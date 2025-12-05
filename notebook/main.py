@@ -397,7 +397,7 @@ def _(df):
 @app.cell
 def _(df, np, pd):
     #define bins and labels
-    bins = [-np.inf, -1.0, 0.5, 1.5, np.inf]
+    bins = [-np.inf, -1.5, 1.0, 3.0, np.inf]
     labels = ["Controversial", "Baseline", "High Quality", "Viral"]
 
     df_binned = df.copy()
@@ -413,7 +413,6 @@ def _(df, np, pd):
     #bin
     df_binned["quality_label"] = pd.cut(df_binned["z_score"], bins=bins, labels=labels)
     df_binned
-
     return (df_binned,)
 
 
@@ -426,7 +425,6 @@ def _(df_binned):
         "Viral": 3,
     }
     df_binned["quality_num"] = df_binned["quality_label"].map(ordinal_map)
-
     return
 
 
