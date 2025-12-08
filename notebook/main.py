@@ -660,8 +660,8 @@ def _(
         eval_strategy="epoch",  # Evaluate every 'n' steps
         num_train_epochs=3,  # Number of training epochs
         # eval_steps=500,                         # Evaluation frequency
-        per_device_train_batch_size=16,  # Training batch size
-        per_device_eval_batch_size=16,  # Evaluation batch size
+        per_device_train_batch_size=32,  # Training batch size
+        per_device_eval_batch_size=32,  # Evaluation batch size
         learning_rate=2e-5,  # Standard learning rate for fine-tuning BERT
         weight_decay=0.01,  # Regularization to prevent overfitting
         save_total_limit=2,  # Save checkpoints every 'n' steps
@@ -687,13 +687,24 @@ def _(df, torch):
 
 
 @app.cell
-def _(train_df):
-    train_df[:10]
+def _(AutoModelForSequenceClassification, AutoTokenizer):
+
+    trained_model = AutoModelForSequenceClassification.from_pretrained("../results/checkpoint-6381/", local_files_only=True)
+    trained_tokenizer = AutoTokenizer.from_pretrained("../results/checkpoint-6381/", local_files_only=True)
+    trained_model(**trained_tokenizer("This is garbage", returned_tensors="pt"))
     return
 
 
 @app.cell
 def _():
+    import os
+    os.path.dirname(__file__)
+    return
+
+
+@app.cell
+def _():
+ 
     return
 
 
