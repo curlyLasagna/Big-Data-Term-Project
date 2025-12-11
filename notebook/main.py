@@ -548,7 +548,7 @@ def _(AutoTokenizer, StandardScaler, np, pd):
                 "http://",
                 "http:// /",
                 "no .",
-                "# 3232 ; \ _ # 3232 ;",
+                r"# 3232 ; \ _ # 3232 ;",
                 "yes .",
                 "no",
             ]
@@ -762,6 +762,16 @@ def _(device, pipeline):
     classifier.model.config.id2label = id2label
 
     classifier(["r/starcraft gg to you too ;)"])
+    return
+
+
+@app.cell
+def _(df):
+    # Extract unique subreddits and save to CSV for Streamlit app
+    unique_subreddits = df["subreddit"].unique()
+    subreddit_df = pd.DataFrame({"subreddit": sorted(unique_subreddits)})
+    subreddit_df.to_csv("../subreddits.csv", index=False)
+    print(f"✓ Saved {len(unique_subreddits)} unique subreddits to subreddits.csv")
     return
 
 
