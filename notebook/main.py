@@ -521,6 +521,7 @@ def _(mo):
 
 @app.cell
 def _(AutoTokenizer, StandardScaler, np, pd):
+    tokenizer = AutoTokenizer.from_pretrained("distilroberta-base")
     def preprocess_function(df: pd.DataFrame):
         def filter_word_count(df: pd.DataFrame):
             # Filter out rows with body word count < 300
@@ -587,7 +588,7 @@ def _(AutoTokenizer, StandardScaler, np, pd):
             return df
 
         def tokenize_text(df: pd.DataFrame, column: str):
-            tokenizer = AutoTokenizer.from_pretrained("distilroberta-base")
+
             encoded_tokens = tokenizer(
                 list(df[column]),
                 truncation=True,
@@ -623,45 +624,28 @@ def _(processed_df, train_test_split):
 
 
 @app.cell
-def _(TrainingArguments):
-    training_args = TrainingArguments(
-        output_dir="./results",  # Directory for saving model checkpoints
-        eval_strategy="epoch",  # Evaluate at the end of each epoch
-        save_strategy="epoch",
-        learning_rate=5e-5,  # Start with a small learning rate
-        per_device_train_batch_size=16,  # Batch size per GPU
-        per_device_eval_batch_size=16,
-        num_train_epochs=3,  # Number of epochs
-        weight_decay=0.01,  # Regularization
-        save_total_limit=2,  # Limit checkpoints to save space
-        load_best_model_at_end=True,  # Automatically load the best checkpoint
-        logging_dir="./logs",  # Directory for logs
-        logging_steps=100,  # Log every 100 steps
-        fp16=True,  # Enable mixed precision for faster training
-    )
+def _(train_df):
+    train_df
     return
 
 
 @app.cell
-def _(
-    AutoModelForSequenceClassification,
-    Dataset,
-    Trainer,
-    TrainingArguments,
-    test_df,
-    train_df,
-):
+def _(AutoModelForSequenceClassification, TrainingArguments):
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilroberta-base", num_labels=4
     )
+    label2id = {'Controversial': 0, "Baseline": 1, "High Quality": 2, "Viral": 3}
+
     training_args = TrainingArguments(
-        output_dir="./results",  # Directory to save model checkpoints
+        # Directory to save model checkpoints
+        output_dir="./results",  
         save_strategy="epoch",
-        eval_strategy="epoch",  # Evaluate every 'n' steps
-        num_train_epochs=3,  # Number of training epochs
-        # eval_steps=500,                         # Evaluation frequency
-        per_device_train_batch_size=32,  # Training batch size
-        per_device_eval_batch_size=32,  # Evaluation batch size
+        eval_strategy="epoch",
+        num_train_epochs=3,
+        # Training batch size
+        per_device_train_batch_size=32,
+        # Evaluation batch size
+        per_device_eval_batch_size=32,
         learning_rate=2e-5,  # Standard learning rate for fine-tuning BERT
         weight_decay=0.01,  # Regularization to prevent overfitting
         save_total_limit=2,  # Save checkpoints every 'n' steps
@@ -669,6 +653,11 @@ def _(
         fp16=True,  # Enable mixed precision for faster training
         logging_steps=100,  # Log metrics every 'n' steps
     )
+    return model, training_args
+
+
+@app.cell
+def _(Dataset, Trainer, model, test_df, train_df, training_args):
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -681,30 +670,66 @@ def _(
 
 
 @app.cell
+def _(
+    CustomLossTrainer,
+    Dataset,
+    df,
+    model,
+    test_df,
+    torch,
+    train_df,
+    training_args,
+):
+    custom_trainer = CustomLossTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=Dataset.from_pandas(train_df),
+        eval_dataset=Dataset.from_pandas(test_df),
+        loss_fn=torch.nn.CrossEntropyLoss(weight=torch.tensor(df["score"]))
+    )
+
+    custom_trainer.train()
+    return
+
+
+@app.cell
 def _(df, torch):
     torch.nn.CrossEntropyLoss(weight=torch.tensor(df["score"]))
     return
 
 
 @app.cell
-def _(AutoModelForSequenceClassification, AutoTokenizer):
-
-    trained_model = AutoModelForSequenceClassification.from_pretrained("../results/checkpoint-6381/", local_files_only=True)
-    trained_tokenizer = AutoTokenizer.from_pretrained("../results/checkpoint-6381/", local_files_only=True)
-    trained_model(**trained_tokenizer("This is garbage", returned_tensors="pt"))
+def _():
+    # trained_model = AutoModelForSequenceClassification.from_pretrained("./results/checkpoint-6381/")
+    # trained_tokenizer = AutoTokenizer.from_pretrained("./results/checkpoint-6381/")
+    # trained_model(**trained_tokenizer("This is garbage", returned_tensors="pt"))
     return
 
 
 @app.cell
-def _():
-    import os
-    os.path.dirname(__file__)
-    return
+def _(Trainer):
+    class CustomLossTrainer(Trainer):
+        def __init__(self, *args, loss_fn=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            # Store your custom loss function.
+            # This should take (logits, labels) as arguments.
+            self.loss_fn = loss_fn
+
+        def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+            # Assume your inputs include "labels" and your model returns logits.
+            labels = inputs.get("labels")
+            outputs = model(**inputs)
+            logits = outputs.get("logits")
+
+            # Compute the custom loss using your loss function.
+            loss = self.loss_fn(logits, labels)
+
+            return (loss, outputs) if return_outputs else loss
+    return (CustomLossTrainer,)
 
 
 @app.cell
 def _():
- 
     return
 
 
