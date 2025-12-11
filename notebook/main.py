@@ -16,6 +16,7 @@ def _():
         Trainer,
         AutoModelForSequenceClassification,
         DataCollatorWithPadding,
+        pipeline
     )
     from sklearn.utils.class_weight import compute_class_weight
     import matplotlib.pyplot as plt
@@ -43,6 +44,7 @@ def _():
         mo,
         np,
         pd,
+        pipeline,
         torch,
         train_test_split,
     )
@@ -314,8 +316,8 @@ def _(alt, pd):
     return
 
 
-@app.cell(hide_code=True)
-def _(alt, pd):
+@app.cell
+def _(alt, df, pd):
     def create_subreddit_avg_votes_histogram(data: pd.DataFrame):
         chart = (
             alt.Chart(data)
@@ -329,6 +331,8 @@ def _(alt, pd):
         )
 
         return chart
+
+    create_subreddit_avg_votes_histogram(df).save(fp="avg_votes.png", scale_factor=2)
     return (create_subreddit_avg_votes_histogram,)
 
 
@@ -521,8 +525,15 @@ def _(mo):
 
 
 @app.cell
+def _(tokenizer):
+    tokenizer.save_pretrained("roberta_classifier")
+    return
+
+
+@app.cell
 def _(AutoTokenizer, StandardScaler, np, pd):
     tokenizer = AutoTokenizer.from_pretrained("distilroberta-base")
+
     def preprocess_function(df: pd.DataFrame):
         def filter_word_count(df: pd.DataFrame):
             # Filter out rows with body word count < 300
@@ -607,7 +618,7 @@ def _(AutoTokenizer, StandardScaler, np, pd):
             ),
             column="text",
         )[["text", "input_ids", "attention_mask", "labels"]]
-    return (preprocess_function,)
+    return preprocess_function, tokenizer
 
 
 @app.cell
@@ -635,7 +646,7 @@ def _(AutoModelForSequenceClassification, TrainingArguments, torch):
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilroberta-base", num_labels=4
     )
-    label2id = {'Controversial': 0, "Baseline": 1, "High Quality": 2, "Viral": 3}
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -677,6 +688,7 @@ def _(
     CustomLossTrainer,
     Dataset,
     compute_class_weight,
+    compute_metrics,
     device,
     model,
     np,
@@ -685,7 +697,6 @@ def _(
     train_df,
     training_args,
 ):
-
     class_weights = compute_class_weight(
         class_weight="balanced",
         classes=np.unique(train_df["labels"]),
@@ -697,24 +708,22 @@ def _(
         args=training_args,
         train_dataset=Dataset.from_pandas(train_df),
         eval_dataset=Dataset.from_pandas(test_df),
-        loss_fn=torch.nn.CrossEntropyLoss(weight=class_weights_tensor).float().to(device)
+        loss_fn=torch.nn.CrossEntropyLoss(weight=class_weights_tensor).to(device),
+        compute_metrics=compute_metrics
     )
+    return (custom_trainer,)
 
+
+@app.cell
+def _(custom_trainer):
     custom_trainer.train()
+    custom_trainer.save_model('roberta_classifier')
     return
 
 
 @app.cell
-def _(df, torch):
-    torch.nn.CrossEntropyLoss(weight=torch.tensor(df["score"]))
-    return
-
-
-@app.cell
-def _():
-    # trained_model = AutoModelForSequenceClassification.from_pretrained("./results/checkpoint-6381/")
-    # trained_tokenizer = AutoTokenizer.from_pretrained("./results/checkpoint-6381/")
-    # trained_model(**trained_tokenizer("This is garbage", returned_tensors="pt"))
+def _(custom_trainer):
+    custom_trainer.evaluate()
     return
 
 
@@ -723,21 +732,60 @@ def _(Trainer):
     class CustomLossTrainer(Trainer):
         def __init__(self, *args, loss_fn=None, **kwargs):
             super().__init__(*args, **kwargs)
-            # Store your custom loss function.
-            # This should take (logits, labels) as arguments.
             self.loss_fn = loss_fn
 
         def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-            # Assume your inputs include "labels" and your model returns logits.
-            labels = inputs.get("labels")
+            labels = inputs.pop("labels")
+
+            # Forward pass (now faster, as it skips internal loss calc)
             outputs = model(**inputs)
             logits = outputs.get("logits")
 
-            # Compute the custom loss using your loss function.
+            # Compute your custom weighted loss
             loss = self.loss_fn(logits, labels)
+
+            # If using newer transformers with gradient accumulation, you might need to handle scaling:
+            if num_items_in_batch is not None:
+                return loss / num_items_in_batch 
 
             return (loss, outputs) if return_outputs else loss
     return (CustomLossTrainer,)
+
+
+@app.cell
+def _(device, pipeline):
+    label2id = {'Controversial': 0, "Baseline": 1, "High Quality": 2, "Viral": 3}
+    id2label = {v: k for k, v in label2id.items()}
+
+    classifier = pipeline('text-classification', model='roberta_classifier', device=device)
+    classifier.model.config.label2id = label2id
+    classifier.model.config.id2label = id2label
+
+    classifier(["r/starcraft gg to you too ;)"])
+    return
+
+
+@app.cell
+def _():
+    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+
+    def compute_metrics(pred):
+        labels = pred.label_ids
+        preds = pred.predictions.argmax(-1)
+    
+        # Calculate accuracy
+        acc = accuracy_score(labels, preds)
+    
+        # Calculate precision, recall, and F1 (weighted accounts for class imbalance)
+        precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average='weighted')
+    
+        return {
+            'accuracy': acc,
+            'f1': f1,
+            'precision': precision,
+            'recall': recall
+        }
+    return (compute_metrics,)
 
 
 @app.cell
