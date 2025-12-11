@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.8"
+__generated_with = "0.18.4"
 app = marimo.App(width="full")
 
 
@@ -38,6 +38,7 @@ def _():
         TrainingArguments,
         WordCloud,
         alt,
+        compute_class_weight,
         load_dataset,
         mo,
         np,
@@ -630,11 +631,13 @@ def _(train_df):
 
 
 @app.cell
-def _(AutoModelForSequenceClassification, TrainingArguments):
+def _(AutoModelForSequenceClassification, TrainingArguments, torch):
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilroberta-base", num_labels=4
     )
     label2id = {'Controversial': 0, "Baseline": 1, "High Quality": 2, "Viral": 3}
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model.to(device)
 
     training_args = TrainingArguments(
         # Directory to save model checkpoints
@@ -653,7 +656,7 @@ def _(AutoModelForSequenceClassification, TrainingArguments):
         fp16=True,  # Enable mixed precision for faster training
         logging_steps=100,  # Log metrics every 'n' steps
     )
-    return model, training_args
+    return device, model, training_args
 
 
 @app.cell
@@ -673,19 +676,28 @@ def _(Dataset, Trainer, model, test_df, train_df, training_args):
 def _(
     CustomLossTrainer,
     Dataset,
-    df,
+    compute_class_weight,
+    device,
     model,
+    np,
     test_df,
     torch,
     train_df,
     training_args,
 ):
+
+    class_weights = compute_class_weight(
+        class_weight="balanced",
+        classes=np.unique(train_df["labels"]),
+        y=train_df["labels"]
+    )
+    class_weights_tensor = torch.tensor(class_weights, dtype=torch.float).to(device)
     custom_trainer = CustomLossTrainer(
         model=model,
         args=training_args,
         train_dataset=Dataset.from_pandas(train_df),
         eval_dataset=Dataset.from_pandas(test_df),
-        loss_fn=torch.nn.CrossEntropyLoss(weight=torch.tensor(df["score"]))
+        loss_fn=torch.nn.CrossEntropyLoss(weight=class_weights_tensor).float().to(device)
     )
 
     custom_trainer.train()
